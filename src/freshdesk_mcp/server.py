@@ -371,7 +371,7 @@ async def delete_ticket(ticket_id: int) -> str:
 @mcp.tool()
 async def get_ticket(ticket_id: int):
     """Get a ticket in Freshdesk."""
-    url = f"https://{FRESHDESK_DOMAIN}/api/v2/tickets/{ticket_id}"
+    url = f"https://{FRESHDESK_DOMAIN}/api/v2/tickets/{ticket_id}?include=requester"
     headers = {
         "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}"
     }
@@ -380,6 +380,30 @@ async def get_ticket(ticket_id: int):
         response = await client.get(url, headers=headers)
         return response.json()
 
+@mcp.tool()
+async def list_tickets_by_requester(requester_id: int):
+    """List tickets by requester ID in Freshdesk."""
+    url = f"https://{FRESHDESK_DOMAIN}/api/v2/tickets?include=requester,description&requester_id={requester_id}"
+    headers = {
+        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}"
+    }
+
+    async with httpx.AsyncClient() as client:
+        response = await client.get(url, headers=headers)
+        return response.json()
+    
+@mcp.tool()
+async def list_tickets_by_email(email: str):
+    """List tickets by email in Freshdesk."""
+    url = f"https://{FRESHDESK_DOMAIN}/api/v2/tickets?include=requester,description&email={email}"
+    headers = {
+        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}"
+    }
+
+    async with httpx.AsyncClient() as client:
+        response = await client.get(url, headers=headers)
+        return response.json()
+    
 @mcp.tool()
 async def search_tickets(query: str) -> Dict[str, Any]:
     """Search for tickets in Freshdesk."""
@@ -1196,6 +1220,73 @@ async def view_ticket_summary(ticket_id: int) -> Dict[str, Any]:
             return response.json()
         except httpx.HTTPStatusError as e:
             return {"error": f"Failed to fetch ticket summary: {str(e)}"}
+        except Exception as e:
+            return {"error": f"An unexpected error occurred: {str(e)}"}
+
+@mcp.tool()
+async def get_ticket_watchers(ticket_id: int) -> Dict[str, Any]:
+    """List watchers for a ticket in Freshdesk."""
+    url = f"https://{FRESHDESK_DOMAIN}/api/v2/tickets/{ticket_id}/watchers"
+    headers = {
+        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}",
+        "Content-Type": "application/json"
+    }
+
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.get(url, headers=headers)
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPStatusError as e:
+            return {"error": f"Failed to fetch watchers: {str(e)}"}
+        except Exception as e:
+            return {"error": f"An unexpected error occurred: {str(e)}"}
+
+@mcp.tool()
+async def add_ticket_watcher(ticket_id: int, user_id: int) -> Dict[str, Any]:
+    """Add a watcher to a ticket in Freshdesk."""
+    url = f"https://{FRESHDESK_DOMAIN}/api/v2/tickets/{ticket_id}/watch"
+    headers = {
+        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}",
+        "Content-Type": "application/json"
+    }
+    data = {
+        "user_id": user_id
+    }
+
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.post(url, headers=headers, json=data)
+            if response.status_code == 204:
+                return {"success": True, "message": "Watcher added successfully"}
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPStatusError as e:
+            return {"error": f"Failed to add watcher: {str(e)}"}
+        except Exception as e:
+            return {"error": f"An unexpected error occurred: {str(e)}"}
+
+@mcp.tool()
+async def remove_ticket_watcher(ticket_id: int, user_id: int) -> Dict[str, Any]:
+    """Remove a watcher from a ticket in Freshdesk."""
+    url = f"https://{FRESHDESK_DOMAIN}/api/v2/tickets/{ticket_id}/unwatch"
+    headers = {
+        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}",
+        "Content-Type": "application/json"
+    }
+    data = {
+        "user_id": user_id
+    }
+
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.put(url, headers=headers, json=data)
+            if response.status_code == 204:
+                return {"success": True, "message": "Watcher removed successfully"}
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPStatusError as e:
+            return {"error": f"Failed to remove watcher: {str(e)}"}
         except Exception as e:
             return {"error": f"An unexpected error occurred: {str(e)}"}
 
