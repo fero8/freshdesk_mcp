@@ -9,17 +9,15 @@ import re
 from pydantic import BaseModel, Field
 
 # Normalize log level for MCP settings.
-log_level = os.getenv("LOG_LEVEL", "INFO")
-if log_level:
-    normalized_level = log_level.upper()
-    os.environ["LOG_LEVEL"] = normalized_level
-    os.environ["MCP_LOG_LEVEL"] = normalized_level
+normalized_level = os.getenv("LOG_LEVEL", "INFO").upper()
+os.environ["LOG_LEVEL"] = normalized_level
+os.environ["MCP_LOG_LEVEL"] = normalized_level
 
 # Set up logging
 logging.basicConfig(level=normalized_level)
 
 # Initialize FastMCP server
-mcp = FastMCP("freshdesk-mcp")
+mcp = FastMCP("freshdesk-mcp", log_level=normalized_level)
 
 FRESHDESK_API_KEY = os.getenv("FRESHDESK_API_KEY")
 FRESHDESK_DOMAIN = os.getenv("FRESHDESK_DOMAIN")
