@@ -308,6 +308,65 @@ async def create_ticket(
             return f"Error: An unexpected error occurred - {str(e)}"
 
 @mcp.tool()
+async def create_outbound_email(outbound_email_fields: Dict[str, Any]) -> Dict[str, Any]:
+    """Create an outbound email via Freshdesk."""
+    if not outbound_email_fields:
+        return {"error": "No fields provided for outbound email"}
+
+    required_fields = ["to_emails", "subject", "body", "name", "email_config_id"]
+    missing_fields = [field for field in required_fields if not outbound_email_fields.get(field)]
+    if missing_fields:
+        return {"error": f"Missing required fields: {', '.join(missing_fields)}"}
+
+    if "status" not in outbound_email_fields:
+        outbound_email_fields["status"] = 5
+
+    url = f"https://{FRESHDESK_DOMAIN}/api/v2/tickets/outbound_email"
+    headers = {
+        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}",
+        "Content-Type": "application/json"
+    }
+
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.post(url, headers=headers, json=outbound_email_fields)
+            if response.status_code == 204:
+                return {"success": True, "message": "Outbound email sent successfully"}
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPStatusError as e:
+            error_details = None
+            try:
+                error_details = e.response.json() if e.response else None
+            except Exception:
+                error_details = None
+            return {
+                "error": f"Failed to create outbound email: {str(e)}",
+                "details": error_details
+            }
+        except Exception as e:
+            return {"error": f"An unexpected error occurred: {str(e)}"}
+
+@mcp.tool()
+async def list_email_configs() -> Dict[str, Any]:
+    """List all email configs in Freshdesk."""
+    url = f"https://{FRESHDESK_DOMAIN}/api/v2/email_configs"
+    headers = {
+        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}",
+        "Content-Type": "application/json"
+    }
+
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.get(url, headers=headers)
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPStatusError as e:
+            return {"error": f"Failed to fetch email configs: {str(e)}"}
+        except Exception as e:
+            return {"error": f"An unexpected error occurred: {str(e)}"}
+
+@mcp.tool()
 async def update_ticket(ticket_id: int, ticket_fields: Dict[str, Any]) -> Dict[str, Any]:
     """Update a ticket in Freshdesk."""
     if not ticket_fields:
