@@ -313,7 +313,7 @@ async def create_outbound_email(outbound_email_fields: Dict[str, Any]) -> Dict[s
     if not outbound_email_fields:
         return {"error": "No fields provided for outbound email"}
 
-    required_fields = ["to_emails", "subject", "body", "name", "email_config_id"]
+    required_fields = ["email", "subject", "body", "name", "email_config_id"]
     missing_fields = [field for field in required_fields if not outbound_email_fields.get(field)]
     if missing_fields:
         return {"error": f"Missing required fields: {', '.join(missing_fields)}"}
