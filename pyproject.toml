@@ -12,6 +12,10 @@ dependencies = [
 ]
 
 [[project.authors]]
+name = "Miroslav Solanka"
+email = "mirosolanka@gmail.com"
+
+[[project.authors]]
 name = "Gopi Krishnan"
 email = "gopi@effy.co.in"
 
