@@ -328,8 +328,8 @@ async def create_outbound_email(
         description: HTML description of the outbound email.
         
         email_config_id: ID of the email config.
-        status: Status of the outbound email (2=Open, 3=Pending, 4=Resolved, 5=Closed).
-        priority: Priority of the outbound email (1=Low, 2=Medium, 3=High, 4=Urgent).
+        status: Status of the outbound email (2=Open, 3=Pending, 4=Resolved, 5=Closed, 6=Waiting on Customer/Default, 7=Waiting on Third Party, 9=Awaiting response - problematic).
+        priority: Priority of the outbound email (1=Low/Default, 2=Medium, 3=High, 4=Urgent).
     """
     outbound_email_fields: Dict[str, Any] = {
         "email": email,
