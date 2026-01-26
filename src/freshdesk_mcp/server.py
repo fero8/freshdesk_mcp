@@ -337,12 +337,13 @@ async def create_outbound_email(
         "description": description,
         "name": name,
         "email_config_id": email_config_id,
+        "priority": priority,
+        "status": status,
     }
     if custom_fields is not None:
         outbound_email_fields["custom_fields"] = custom_fields
     if attachments is not None:
         outbound_email_fields["attachments"] = attachments
-    outbound_email_fields["status"] = 5 if status is None else status
 
     url = f"https://{FRESHDESK_DOMAIN}/api/v2/tickets/outbound_email"
     headers = {
