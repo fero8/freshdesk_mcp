@@ -308,18 +308,39 @@ async def create_ticket(
             return f"Error: An unexpected error occurred - {str(e)}"
 
 @mcp.tool()
-async def create_outbound_email(outbound_email_fields: Dict[str, Any]) -> Dict[str, Any]:
-    """Create an outbound email via Freshdesk."""
-    if not outbound_email_fields:
-        return {"error": "No fields provided for outbound email"}
+async def create_outbound_email(
+    email: str,
+    name: str,
+    subject: str,
+    description: str,
+    email_config_id: int,
+    status: Optional[int] = 3,
+    custom_fields: Optional[Dict[str, Any]] = None,
+    attachments: Optional[List[Dict[str, Any]]] = None,
+) -> Dict[str, Any]:
+    """Create an outbound email via Freshdesk.
 
-    required_fields = ["email", "subject", "description", "name", "email_config_id"]
-    missing_fields = [field for field in required_fields if not outbound_email_fields.get(field)]
-    if missing_fields:
-        return {"error": f"Missing required fields: {', '.join(missing_fields)}"}
-
-    if "status" not in outbound_email_fields:
-        outbound_email_fields["status"] = 5
+    Args:
+        email: Email of the requester.
+        name: Name of the requester.
+        subject: Subject of the outbound email.
+        description: HTML description of the outbound email.
+        
+        email_config_id: ID of the email config.
+        status: Status of the outbound email (2=Open, 3=Pending, 4=Resolved, 5=Closed).
+    """
+    outbound_email_fields: Dict[str, Any] = {
+        "email": email,
+        "subject": subject,
+        "description": description,
+        "name": name,
+        "email_config_id": email_config_id,
+    }
+    if custom_fields is not None:
+        outbound_email_fields["custom_fields"] = custom_fields
+    if attachments is not None:
+        outbound_email_fields["attachments"] = attachments
+    outbound_email_fields["status"] = 5 if status is None else status
 
     url = f"https://{FRESHDESK_DOMAIN}/api/v2/tickets/outbound_email"
     headers = {
