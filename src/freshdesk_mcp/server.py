@@ -315,6 +315,7 @@ async def create_outbound_email(
     description: str,
     email_config_id: int,
     status: Optional[int] = 3,
+    priority: Optional[int] = 1,
     custom_fields: Optional[Dict[str, Any]] = None,
     attachments: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
@@ -328,6 +329,7 @@ async def create_outbound_email(
         
         email_config_id: ID of the email config.
         status: Status of the outbound email (2=Open, 3=Pending, 4=Resolved, 5=Closed).
+        priority: Priority of the outbound email (1=Low, 2=Medium, 3=High, 4=Urgent).
     """
     outbound_email_fields: Dict[str, Any] = {
         "email": email,
