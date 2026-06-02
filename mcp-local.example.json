@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "freshdesk-mcp-local":{
+        "command":"uv",
+        "args":["run","--project","/Users/fero8/dev/freshdesk_mcp","freshdesk-mcp"],
+        "env":{
+            "FRESHDESK_API_KEY":"",
+            "FRESHDESK_DOMAIN":"68travel.freshdesk.com"
+        }
+    }
+  }
+}
