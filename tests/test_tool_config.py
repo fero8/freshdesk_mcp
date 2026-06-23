@@ -187,6 +187,26 @@ class TestServerToolRegistration(unittest.TestCase):
 
         self.assertTrue(runner_called)
 
+    def test_main_runs_streamable_http_transport(self):
+        server = self.import_server_with_runtime_env(MCP_TRANSPORT="streamable-http")
+        runner_called = False
+
+        async def fake_authenticated_streamable_http_runner():
+            nonlocal runner_called
+            runner_called = True
+
+        original_runner = server.run_authenticated_streamable_http_async
+
+        try:
+            server.run_authenticated_streamable_http_async = (
+                fake_authenticated_streamable_http_runner
+            )
+            server.main()
+        finally:
+            server.run_authenticated_streamable_http_async = original_runner
+
+        self.assertTrue(runner_called)
+
     def test_server_loads_env_file_values_from_working_directory(self):
         original_cwd = os.getcwd()
         env_names = ("FRESHDESK_DOMAIN", "MCP_TRANSPORT", "MCP_PORT")
@@ -304,6 +324,22 @@ class TestBearerAuthentication(unittest.TestCase):
                 return await client.get("/sse")
 
         response = asyncio.run(request_sse_without_bearer())
+
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.headers["www-authenticate"], "Bearer")
+
+    def test_streamable_http_endpoint_returns_401_when_bearer_is_missing(self):
+        async def request_mcp_without_bearer():
+            import httpx
+
+            transport = httpx.ASGITransport(app=self.server.create_streamable_http_app())
+            async with httpx.AsyncClient(
+                transport=transport,
+                base_url="http://testserver",
+            ) as client:
+                return await client.post("/mcp")
+
+        response = asyncio.run(request_mcp_without_bearer())
 
         self.assertEqual(response.status_code, 401)
         self.assertEqual(response.headers["www-authenticate"], "Bearer")

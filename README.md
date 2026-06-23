@@ -167,19 +167,30 @@ npx -y @smithery/cli install @effytech/freshdesk_mcp --client claude
 ### Configuration
 
 1. Generate your Freshdesk API key from the Freshdesk admin panel
-2. Set up your domain and authentication details
+2. Set `FRESHDESK_DOMAIN` on the server (for example `yourcompany.freshdesk.com`)
+3. For remote HTTP clients, each user passes their own Freshdesk API key as `Authorization: Bearer <api-key>`
 
-### Usage with Claude Desktop
+Copy `.env.example` to `.env` and adjust runtime settings as needed.
 
-1. Install Claude Desktop if you haven't already
-2. Add the following configuration to your `claude_desktop_config.json`:
+| Variable | Required | Description |
+| --- | --- | --- |
+| `FRESHDESK_DOMAIN` | yes | Freshdesk tenant hostname |
+| `MCP_TRANSPORT` | no | `stdio` (default), `sse`, or `streamable-http` |
+| `MCP_HOST` | no | Bind address for HTTP transports (default `127.0.0.1`) |
+| `MCP_PORT` | no | Port for HTTP transports (default `8000`) |
+| `ENABLED_MCP_TOOLS` | no | Comma-separated allowlist |
+| `DISABLED_MCP_TOOLS` | no | Comma-separated denylist |
+
+### Local usage (stdio)
+
+For Claude Desktop, Cursor, or other stdio MCP clients on the same machine:
 
 ```json
 "mcpServers": {
   "freshdesk-mcp": {
     "command": "uvx",
     "args": [
-        "freshdesk-mcp"
+      "freshdesk-mcp"
     ],
     "env": {
       "FRESHDESK_API_KEY": "<YOUR_FRESHDESK_API_KEY>",
@@ -189,9 +200,49 @@ npx -y @smithery/cli install @effytech/freshdesk_mcp --client claude
 }
 ```
 
-**Important Notes**:
-- Replace `YOUR_FRESHDESK_API_KEY` with your actual Freshdesk API key
-- Replace `YOUR_FRESHDESK_DOMAIN` with your Freshdesk domain (e.g., `yourcompany.freshdesk.com`)
+See `mcp-local.example.json` for a project-local `uv run` variant.
+
+Replace `YOUR_FRESHDESK_API_KEY` and `YOUR_FRESHDESK_DOMAIN` with your actual values.
+
+### Remote usage (HTTP)
+
+The server supports two remote MCP transports:
+
+| Transport | Endpoint | Clients |
+| --- | --- | --- |
+| SSE (legacy) | `GET /sse` + `POST /messages/` | Cursor, Claude Desktop (remote URL) |
+| Streamable HTTP | `POST /mcp` | OpenAI Codex |
+
+With `MCP_TRANSPORT=sse`, both `/sse` and `/mcp` are served on the same port. Use `MCP_TRANSPORT=streamable-http` to expose only `/mcp`.
+
+Run behind a reverse proxy (Nginx, Caddy, etc.) with TLS. Example client config is in `mcp.example.json`:
+
+```json
+"mcpServers": {
+  "freshdesk-mcp-remote-sse": {
+    "url": "https://mcp.example.com/sse",
+    "headers": {
+      "Authorization": "Bearer <your-freshdesk-api-key>"
+    }
+  },
+  "freshdesk-mcp-remote-codex": {
+    "url": "https://mcp.example.com/mcp",
+    "headers": {
+      "Authorization": "Bearer <your-freshdesk-api-key>"
+    }
+  }
+}
+```
+
+**Codex** does not support SSE. Point it at `/mcp` in `~/.codex/config.toml` (see `codex.example.toml`):
+
+```toml
+[mcp_servers.freshdesk]
+url = "https://mcp.example.com/mcp"
+bearer_token_env_var = "FRESHDESK_API_KEY"
+```
+
+Codex CLI 0.134.0+ is required for remote MCP. Verify with `codex --version` and `/mcp` inside the TUI.
 
 ## Example Operations
 
@@ -205,10 +256,22 @@ Once configured, you can ask Claude to perform operations like:
 
 ## Testing
 
-For testing purposes, you can start the server manually:
+Local stdio:
 
 ```bash
-uvx freshdesk-mcp --env FRESHDESK_API_KEY=<your_api_key> --env FRESHDESK_DOMAIN=<your_domain>
+uvx freshdesk-mcp
+```
+
+Remote HTTP (serves `/sse` and `/mcp`):
+
+```bash
+MCP_TRANSPORT=sse MCP_HOST=0.0.0.0 MCP_PORT=8000 uv run freshdesk-mcp
+```
+
+Unit tests:
+
+```bash
+uv run python -m unittest tests.test_tool_config -v
 ```
 
 ## Troubleshooting
@@ -217,6 +280,10 @@ uvx freshdesk-mcp --env FRESHDESK_API_KEY=<your_api_key> --env FRESHDESK_DOMAIN=
 - Ensure proper network connectivity to Freshdesk servers
 - Check API rate limits and quotas
 - Verify the `uvx` command is available in your PATH
+- **Codex `POST /sse` → 405**: Codex requires Streamable HTTP at `/mcp`, not SSE at `/sse`
+- **`BrokenResourceError` in server logs**: usually a client speaking SSE badly; switch the client to `/mcp`
+- **Remote 401**: send `Authorization: Bearer <freshdesk-api-key>` on every HTTP request
+- **SSE through Nginx**: disable buffering and use long proxy timeouts on `/sse` and `/mcp`
 
 ## License
 

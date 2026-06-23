@@ -17,8 +17,8 @@ from .tool_config import make_configured_tool_decorator, parse_mcp_tool_list
 
 load_dotenv(dotenv_path=os.path.join(os.getcwd(), ".env"))
 
-MCPTransport = Literal["stdio", "sse"]
-SUPPORTED_MCP_TRANSPORTS = {"stdio", "sse"}
+MCPTransport = Literal["stdio", "sse", "streamable-http"]
+SUPPORTED_MCP_TRANSPORTS = {"stdio", "sse", "streamable-http"}
 ToolFunc = TypeVar("ToolFunc", bound=Callable[..., Any])
 freshdesk_api_key_context: ContextVar[str | None] = ContextVar(
     "freshdesk_api_key",
@@ -1558,10 +1558,42 @@ async def delete_ticket_summary(ticket_id: int) -> Dict[str, Any]:
             return {"error": f"An unexpected error occurred: {str(e)}"}
 
 
-def create_sse_app():
+def _missing_bearer_response():
+    from starlette.responses import Response
+
+    return Response(
+        "Missing Bearer token",
+        status_code=401,
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+
+def _add_streamable_bearer_middleware(starlette_app):
+    from starlette.middleware.base import BaseHTTPMiddleware
+
+    class StreamableBearerMiddleware(BaseHTTPMiddleware):
+        async def dispatch(self, request, call_next):
+            api_key = extract_bearer_token(request.headers.get("authorization"))
+            if api_key is None:
+                return _missing_bearer_response()
+
+            token = set_freshdesk_api_key(api_key)
+            try:
+                return await call_next(request)
+            finally:
+                reset_freshdesk_api_key(token)
+
+    starlette_app.add_middleware(StreamableBearerMiddleware)
+    return starlette_app
+
+
+def create_streamable_http_app():
+    return _add_streamable_bearer_middleware(mcp.streamable_http_app())
+
+
+def create_remote_mcp_app():
     from mcp.server.sse import SseServerTransport
     from starlette.applications import Starlette
-    from starlette.responses import Response
     from starlette.routing import Mount, Route
 
     sse = SseServerTransport("/messages/")
@@ -1569,11 +1601,7 @@ def create_sse_app():
     async def handle_sse(request):
         api_key = extract_bearer_token(request.headers.get("authorization"))
         if api_key is None:
-            return Response(
-                "Missing Bearer token",
-                status_code=401,
-                headers={"WWW-Authenticate": "Bearer"},
-            )
+            return _missing_bearer_response()
 
         token = set_freshdesk_api_key(api_key)
         try:
@@ -1590,20 +1618,32 @@ def create_sse_app():
         finally:
             reset_freshdesk_api_key(token)
 
+    # ponytail: one process serves legacy SSE (/sse) and Codex streamable HTTP (/mcp)
+    streamable_app = create_streamable_http_app()
+    streamable_mcp = next(
+        route for route in streamable_app.routes if route.path == "/mcp"
+    )
+
     return Starlette(
         debug=mcp.settings.debug,
         routes=[
             Route("/sse", endpoint=handle_sse),
             Mount("/messages/", app=sse.handle_post_message),
+            Route("/mcp", endpoint=streamable_mcp.endpoint),
         ],
+        lifespan=streamable_app.router.lifespan_context,
     )
 
 
-async def run_authenticated_sse_async() -> None:
+def create_sse_app():
+    return create_remote_mcp_app()
+
+
+async def _run_uvicorn_app(starlette_app) -> None:
     import uvicorn
 
     config = uvicorn.Config(
-        create_sse_app(),
+        starlette_app,
         host=mcp.settings.host,
         port=mcp.settings.port,
         log_level=mcp.settings.log_level.lower(),
@@ -1612,10 +1652,21 @@ async def run_authenticated_sse_async() -> None:
     await server.serve()
 
 
+async def run_authenticated_sse_async() -> None:
+    await _run_uvicorn_app(create_remote_mcp_app())
+
+
+async def run_authenticated_streamable_http_async() -> None:
+    await _run_uvicorn_app(create_streamable_http_app())
+
+
 def main():
     logging.info("Starting Freshdesk MCP server with %s transport", MCP_TRANSPORT)
     if MCP_TRANSPORT == "sse":
         anyio.run(run_authenticated_sse_async)
+        return
+    if MCP_TRANSPORT == "streamable-http":
+        anyio.run(run_authenticated_streamable_http_async)
         return
 
     mcp.run(transport=MCP_TRANSPORT)
