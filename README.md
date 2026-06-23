@@ -211,22 +211,16 @@ The server supports two remote MCP transports:
 | Transport | Endpoint | Clients |
 | --- | --- | --- |
 | SSE (legacy) | `GET /sse` + `POST /messages/` | Cursor, Claude Desktop (remote URL) |
-| Streamable HTTP | `POST /mcp` | OpenAI Codex |
+| Streamable HTTP | `POST /mcp` or `POST /sse` | OpenAI Codex |
 
-With `MCP_TRANSPORT=sse`, both `/sse` and `/mcp` are served on the same port. Use `MCP_TRANSPORT=streamable-http` to expose only `/mcp`.
+With `MCP_TRANSPORT=sse`, the server serves legacy SSE on `GET /sse`, Streamable HTTP on `POST /sse` and `POST /mcp`. Use `POST /sse` when your reverse proxy only forwards that path (typical on Forge). Use `MCP_TRANSPORT=streamable-http` to expose only `/mcp`.
 
 Run behind a reverse proxy (Nginx, Caddy, etc.) with TLS. Example client config is in `mcp.example.json`:
 
 ```json
 "mcpServers": {
-  "freshdesk-mcp-remote-sse": {
+  "freshdesk-mcp-remote": {
     "url": "https://mcp.example.com/sse",
-    "headers": {
-      "Authorization": "Bearer <your-freshdesk-api-key>"
-    }
-  },
-  "freshdesk-mcp-remote-codex": {
-    "url": "https://mcp.example.com/mcp",
     "headers": {
       "Authorization": "Bearer <your-freshdesk-api-key>"
     }
@@ -234,11 +228,11 @@ Run behind a reverse proxy (Nginx, Caddy, etc.) with TLS. Example client config 
 }
 ```
 
-**Codex** does not support SSE. Point it at `/mcp` in `~/.codex/config.toml` (see `codex.example.toml`):
+**Codex** does not support legacy SSE (`GET` stream). Point it at `/sse` anyway — the server answers Codex `POST` requests on that path. See `codex.example.toml`:
 
 ```toml
 [mcp_servers.freshdesk]
-url = "https://mcp.example.com/mcp"
+url = "https://mcp.example.com/sse"
 bearer_token_env_var = "FRESHDESK_API_KEY"
 ```
 
@@ -280,8 +274,9 @@ uv run python -m unittest tests.test_tool_config -v
 - Ensure proper network connectivity to Freshdesk servers
 - Check API rate limits and quotas
 - Verify the `uvx` command is available in your PATH
-- **Codex `POST /sse` → 405**: Codex requires Streamable HTTP at `/mcp`, not SSE at `/sse`
-- **`BrokenResourceError` in server logs**: usually a client speaking SSE badly; switch the client to `/mcp`
+- **Codex `POST /sse` → 405**: deploy the latest server — it should accept Streamable HTTP on `POST /sse`
+- **`POST /mcp` → 421 or 404**: your reverse proxy may not forward `/mcp`; use `/sse` instead
+- **`BrokenResourceError` in server logs**: client tried legacy SSE on a Streamable HTTP-only client; use `POST /sse` for Codex
 - **Remote 401**: send `Authorization: Bearer <freshdesk-api-key>` on every HTTP request
 - **SSE through Nginx**: disable buffering and use long proxy timeouts on `/sse` and `/mcp`
 

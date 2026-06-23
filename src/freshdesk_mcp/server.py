@@ -1,5 +1,6 @@
 import httpx
 from mcp.server.fastmcp import FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
 import anyio
 from contextvars import ContextVar, Token
 from functools import wraps
@@ -118,6 +119,26 @@ def parse_mcp_port(raw_port: str | None) -> int:
     except ValueError as exc:
         raise ValueError("MCP_PORT must be an integer") from exc
 
+
+def build_mcp_transport_security(host: str) -> TransportSecuritySettings | None:
+    allowed_hosts = parse_mcp_tool_list(os.getenv("MCP_ALLOWED_HOSTS"))
+    if allowed_hosts:
+        host_patterns = []
+        for allowed_host in allowed_hosts:
+            host_patterns.append(allowed_host)
+            if ":*" not in allowed_host:
+                host_patterns.append(f"{allowed_host}:*")
+        return TransportSecuritySettings(
+            enable_dns_rebinding_protection=True,
+            allowed_hosts=host_patterns,
+        )
+
+    if host in ("127.0.0.1", "localhost", "::1"):
+        # ponytail: reverse proxies send the public Host header, not the loopback bind address
+        return TransportSecuritySettings(enable_dns_rebinding_protection=False)
+
+    return None
+
 # Normalize log level for MCP settings.
 normalized_level = os.getenv("LOG_LEVEL", "INFO").upper()
 os.environ["LOG_LEVEL"] = normalized_level
@@ -135,6 +156,7 @@ mcp = FastMCP(
     log_level=normalized_level,
     host=MCP_HOST,
     port=MCP_PORT,
+    transport_security=build_mcp_transport_security(MCP_HOST),
 )
 ENABLED_MCP_TOOLS = parse_mcp_tool_list(os.getenv("ENABLED_MCP_TOOLS"))
 DISABLED_MCP_TOOLS = parse_mcp_tool_list(os.getenv("DISABLED_MCP_TOOLS"))
@@ -1587,6 +1609,29 @@ def _add_streamable_bearer_middleware(starlette_app):
     return starlette_app
 
 
+class _BearerAuthenticatedStreamable:
+    def __init__(self, streamable_endpoint):
+        self.streamable_endpoint = streamable_endpoint
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.streamable_endpoint(scope, receive, send)
+            return
+
+        headers = dict(scope.get("headers", []))
+        auth = headers.get(b"authorization", b"").decode()
+        api_key = extract_bearer_token(auth)
+        if api_key is None:
+            await _missing_bearer_response()(scope, receive, send)
+            return
+
+        token = set_freshdesk_api_key(api_key)
+        try:
+            await self.streamable_endpoint(scope, receive, send)
+        finally:
+            reset_freshdesk_api_key(token)
+
+
 def create_streamable_http_app():
     return _add_streamable_bearer_middleware(mcp.streamable_http_app())
 
@@ -1623,11 +1668,14 @@ def create_remote_mcp_app():
     streamable_mcp = next(
         route for route in streamable_app.routes if route.path == "/mcp"
     )
+    streamable_post = _BearerAuthenticatedStreamable(streamable_mcp.endpoint)
 
     return Starlette(
         debug=mcp.settings.debug,
         routes=[
-            Route("/sse", endpoint=handle_sse),
+            Route("/sse", endpoint=handle_sse, methods=["GET"]),
+            # ponytail: Codex POSTs to the configured URL; Forge/nginx often proxies only /sse
+            Route("/sse", endpoint=streamable_post, methods=["POST"]),
             Mount("/messages/", app=sse.handle_post_message),
             Route("/mcp", endpoint=streamable_mcp.endpoint),
         ],

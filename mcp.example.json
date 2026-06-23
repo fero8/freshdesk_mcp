@@ -1,13 +1,7 @@
 {
   "mcpServers": {
-    "freshdesk-mcp-remote-sse": {
+    "freshdesk-mcp-remote": {
       "url": "https://mcpfd.68travel.com/sse",
-      "headers": {
-        "Authorization": "Bearer <your-freshdesk-api-key>"
-      }
-    },
-    "freshdesk-mcp-remote-codex": {
-      "url": "https://mcpfd.68travel.com/mcp",
       "headers": {
         "Authorization": "Bearer <your-freshdesk-api-key>"
       }

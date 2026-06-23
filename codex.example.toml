@@ -2,6 +2,6 @@
 # Codex requires Streamable HTTP at /mcp — do not use /sse.
 
 [mcp_servers.freshdesk-mcp]
-url = "https://mcpfd.68travel.com/mcp"
+url = "https://mcpfd.68travel.com/sse"
 bearer_token_env_var = "FRESHDESK_API_KEY"
 enabled = true

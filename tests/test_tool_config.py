@@ -328,6 +328,30 @@ class TestBearerAuthentication(unittest.TestCase):
         self.assertEqual(response.status_code, 401)
         self.assertEqual(response.headers["www-authenticate"], "Bearer")
 
+    def test_sse_post_accepts_streamable_http_initialize(self):
+        from starlette.testclient import TestClient
+
+        with TestClient(self.server.create_remote_mcp_app()) as client:
+            response = client.post(
+                "/sse",
+                json={
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "initialize",
+                    "params": {
+                        "protocolVersion": "2024-11-05",
+                        "capabilities": {},
+                        "clientInfo": {"name": "test", "version": "1.0"},
+                    },
+                },
+                headers={
+                    "Authorization": "Bearer freshdesk-user-key",
+                    "Accept": "application/json, text/event-stream",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+
     def test_streamable_http_endpoint_returns_401_when_bearer_is_missing(self):
         async def request_mcp_without_bearer():
             import httpx
