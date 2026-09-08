@@ -40,7 +40,7 @@ The server offers several tools for Freshdesk operations:
 
 - `search_tickets`: Search for tickets based on criteria
   - **Inputs**:
-    - `query` (string, required): Search query string
+    - `query` (string, required): Freshdesk Filter Tickets query. The API requires the whole string in double quotes (e.g. `"status:2"`). Outer quotes may be omitted; the server wraps them when missing.
 
 - `get_ticket_fields`: Get all ticket fields
   - **Inputs**:

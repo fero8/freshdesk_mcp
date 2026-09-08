@@ -649,14 +649,27 @@ async def list_tickets_by_email(email: str):
         response = await client.get(url, headers=headers)
         return response.json()
     
+def normalize_freshdesk_search_query(query: str) -> str:
+    """Freshdesk Filter Tickets requires the whole query in double quotes."""
+    q = query.strip()
+    if len(q) >= 2 and q.startswith('"') and q.endswith('"'):
+        return q
+    return f'"{q}"'
+
+
 @tool()
 async def search_tickets(query: str) -> Dict[str, Any]:
-    """Search for tickets in Freshdesk."""
+    """Search for tickets in Freshdesk (Filter Tickets API).
+
+    Freshdesk requires the whole query wrapped in double quotes, e.g.
+    `"status:2"` or `"status:2 AND priority:1"`. Outer quotes may be omitted;
+    this tool adds them when missing.
+    """
     url = f"https://{FRESHDESK_DOMAIN}/api/v2/search/tickets"
     headers = {
         "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}"
     }
-    params = {"query": query}
+    params = {"query": normalize_freshdesk_search_query(query)}
     async with httpx.AsyncClient() as client:
         response = await client.get(url, headers=headers, params=params)
         return response.json()
