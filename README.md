@@ -41,6 +41,7 @@ The server offers several tools for Freshdesk operations:
 - `search_tickets`: Search for tickets based on criteria
   - **Inputs**:
     - `query` (string, required): Freshdesk Filter Tickets query. The API requires the whole string in double quotes (e.g. `"status:2"`). Outer quotes may be omitted; the server wraps them when missing.
+    - `page` (number, optional): Page 1–10 (30 results per page; out-of-range values are clamped)
 
 - `get_ticket_fields`: Get all ticket fields
   - **Inputs**:
@@ -50,10 +51,14 @@ The server offers several tools for Freshdesk operations:
   - **Inputs**:
     - `page` (number, optional): Page number to fetch
     - `per_page` (number, optional): Number of tickets per page
+    - `filter` (string, optional): Predefined view — `new_and_my_open`, `watching`, `spam`, `deleted`
+    - `updated_since` (string, optional): ISO-8601 UTC, e.g. `2015-08-17T00:00:00Z`
+    - `include` (string, optional): Comma-separated embeds — `stats`, `requester`, `description`
 
 - `get_ticket`: Get a single ticket
   - **Inputs**:
     - `ticket_id` (number, required): ID of the ticket to get
+    - `include` (string, optional): Comma-separated embeds — `requester` (default), `company`, `stats`, `conversations`
 
 - `get_ticket_conversation`: Get conversation for a ticket
   - **Inputs**:
@@ -63,11 +68,21 @@ The server offers several tools for Freshdesk operations:
   - **Inputs**:
     - `ticket_id` (number, required): ID of the ticket
     - `body` (string, required): Content of the reply
+    - `cc_emails` (array, optional): CC addresses
+    - `bcc_emails` (array, optional): BCC addresses
+    - `user_id` (number, optional): Acting agent
+    - `attachments` (array, optional): JSON attachment objects (no multipart upload)
 
 - `create_ticket_note`: Add a note to a ticket
   - **Inputs**:
     - `ticket_id` (number, required): ID of the ticket
     - `body` (string, required): Content of the note
+    - `cc_emails` (array, optional): CC addresses
+    - `bcc_emails` (array, optional): BCC addresses
+    - `user_id` (number, optional): Acting agent
+    - `attachments` (array, optional): JSON attachment objects (no multipart upload)
+    - `private` (boolean, optional): Private note
+    - `notify_emails` (array, optional): Agents to notify
 
 - `update_ticket_conversation`: Update a conversation
   - **Inputs**:

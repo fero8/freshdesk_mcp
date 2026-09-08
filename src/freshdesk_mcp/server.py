@@ -336,8 +336,19 @@ async def get_ticket_fields() -> Dict[str, Any]:
 
 
 @tool()
-async def get_tickets(page: Optional[int] = 1, per_page: Optional[int] = 30) -> Dict[str, Any]:
-    """Get tickets from Freshdesk with pagination support."""
+async def get_tickets(
+    page: Optional[int] = 1,
+    per_page: Optional[int] = 30,
+    filter: Optional[str] = None,
+    updated_since: Optional[str] = None,
+    include: Optional[str] = None,
+) -> Dict[str, Any]:
+    """List tickets from Freshdesk.
+
+    filter: predefined view — new_and_my_open, watching, spam, deleted.
+    updated_since: ISO-8601 UTC, e.g. 2015-08-17T00:00:00Z.
+    include: comma-separated embeds — stats, requester, description.
+    """
     # Validate input parameters
     if page < 1:
         return {"error": "Page number must be greater than 0"}
@@ -347,10 +358,16 @@ async def get_tickets(page: Optional[int] = 1, per_page: Optional[int] = 30) -> 
 
     url = f"https://{FRESHDESK_DOMAIN}/api/v2/tickets"
 
-    params = {
+    params: Dict[str, Any] = {
         "page": page,
         "per_page": per_page
     }
+    if filter:
+        params["filter"] = filter
+    if updated_since:
+        params["updated_since"] = updated_since
+    if include:
+        params["include"] = include
 
     headers = {
         "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}",
@@ -614,15 +631,23 @@ async def delete_ticket(ticket_id: int) -> str:
         return response.json()
 
 @tool()
-async def get_ticket(ticket_id: int):
-    """Get a ticket in Freshdesk."""
-    url = f"https://{FRESHDESK_DOMAIN}/api/v2/tickets/{ticket_id}?include=requester"
+async def get_ticket(ticket_id: int, include: Optional[str] = "requester"):
+    """Get a ticket in Freshdesk.
+
+    include: comma-separated embeds — requester, company, stats, conversations.
+    Defaults to requester. Conversations embed is capped at 10; use
+    get_ticket_conversation for the full thread.
+    """
+    url = f"https://{FRESHDESK_DOMAIN}/api/v2/tickets/{ticket_id}"
     headers = {
         "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}"
     }
+    params = {}
+    if include:
+        params["include"] = include
 
     async with httpx.AsyncClient() as client:
-        response = await client.get(url, headers=headers)
+        response = await client.get(url, headers=headers, params=params)
         return response.json()
 
 @tool()
@@ -657,19 +682,51 @@ def normalize_freshdesk_search_query(query: str) -> str:
     return f'"{q}"'
 
 
+def clamp_freshdesk_search_page(page: int) -> int:
+    """Filter Tickets page is 1–10 (30 results per page)."""
+    return min(10, max(1, page))
+
+
+def conversation_write_payload(
+    body: str,
+    cc_emails: Optional[List[str]] = None,
+    bcc_emails: Optional[List[str]] = None,
+    user_id: Optional[int] = None,
+    attachments: Optional[List[Dict[str, Any]]] = None,
+    extra: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    data: Dict[str, Any] = {"body": body}
+    if cc_emails is not None:
+        data["cc_emails"] = cc_emails
+    if bcc_emails is not None:
+        data["bcc_emails"] = bcc_emails
+    if user_id is not None:
+        data["user_id"] = user_id
+    if attachments is not None:
+        data["attachments"] = attachments
+    if extra:
+        data.update(extra)
+    return data
+
+
 @tool()
-async def search_tickets(query: str) -> Dict[str, Any]:
+async def search_tickets(query: str, page: int = 1) -> Dict[str, Any]:
     """Search for tickets in Freshdesk (Filter Tickets API).
 
     Freshdesk requires the whole query wrapped in double quotes, e.g.
     `"status:2"` or `"status:2 AND priority:1"`. Outer quotes may be omitted;
     this tool adds them when missing.
+
+    page: 1–10 (30 tickets per page; values outside the range are clamped).
     """
     url = f"https://{FRESHDESK_DOMAIN}/api/v2/search/tickets"
     headers = {
         "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}"
     }
-    params = {"query": normalize_freshdesk_search_query(query)}
+    params = {
+        "query": normalize_freshdesk_search_query(query),
+        "page": clamp_freshdesk_search_page(page),
+    }
     async with httpx.AsyncClient() as client:
         response = await client.get(url, headers=headers, params=params)
         return response.json()
@@ -686,29 +743,67 @@ async def get_ticket_conversation(ticket_id: int)-> list[Dict[str, Any]]:
         return response.json()
 
 @tool()
-async def create_ticket_reply(ticket_id: int,body: str)-> Dict[str, Any]:
-    """Create a reply to a ticket in Freshdesk."""
+async def create_ticket_reply(
+    ticket_id: int,
+    body: str,
+    cc_emails: Optional[List[str]] = None,
+    bcc_emails: Optional[List[str]] = None,
+    user_id: Optional[int] = None,
+    attachments: Optional[List[Dict[str, Any]]] = None,
+) -> Dict[str, Any]:
+    """Create a reply to a ticket in Freshdesk.
+
+    Optional: cc_emails, bcc_emails, user_id (acting agent), attachments
+    (JSON list; multipart file upload is not supported here).
+    """
     url = f"https://{FRESHDESK_DOMAIN}/api/v2/tickets/{ticket_id}/reply"
     headers = {
         "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}"
     }
-    data = {
-        "body": body
-    }
+    data = conversation_write_payload(
+        body,
+        cc_emails=cc_emails,
+        bcc_emails=bcc_emails,
+        user_id=user_id,
+        attachments=attachments,
+    )
     async with httpx.AsyncClient() as client:
         response = await client.post(url, headers=headers, json=data)
         return response.json()
 
 @tool()
-async def create_ticket_note(ticket_id: int,body: str)-> Dict[str, Any]:
-    """Create a note for a ticket in Freshdesk."""
+async def create_ticket_note(
+    ticket_id: int,
+    body: str,
+    cc_emails: Optional[List[str]] = None,
+    bcc_emails: Optional[List[str]] = None,
+    user_id: Optional[int] = None,
+    attachments: Optional[List[Dict[str, Any]]] = None,
+    private: Optional[bool] = None,
+    notify_emails: Optional[List[str]] = None,
+) -> Dict[str, Any]:
+    """Create a note for a ticket in Freshdesk.
+
+    Optional: cc_emails, bcc_emails, user_id, attachments, private,
+    notify_emails.
+    """
     url = f"https://{FRESHDESK_DOMAIN}/api/v2/tickets/{ticket_id}/notes"
     headers = {
         "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}"
     }
-    data = {
-        "body": body
-    }
+    extra: Dict[str, Any] = {}
+    if private is not None:
+        extra["private"] = private
+    if notify_emails is not None:
+        extra["notify_emails"] = notify_emails
+    data = conversation_write_payload(
+        body,
+        cc_emails=cc_emails,
+        bcc_emails=bcc_emails,
+        user_id=user_id,
+        attachments=attachments,
+        extra=extra or None,
+    )
     async with httpx.AsyncClient() as client:
         response = await client.post(url, headers=headers, json=data)
         return response.json()
